@@ -3,6 +3,18 @@
   font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
   background: #f4f7fb;
   color: #102039;
+
+  --online:      #17a35c;
+  --online-bg:   #d2fae3;
+  --online-text: #0e6a3a;
+
+  --stale:      #d0a102;
+  --stale-bg:   #ffeebb;
+  --stale-text: #815f00;
+
+  --offline:      #c23447;
+  --offline-bg:   #ffdfe2;
+  --offline-text: #8f1d2c;
 }
 
 * {
@@ -46,19 +58,19 @@ h1 {
 }
 
 .badge.connected {
-  background: #d2fae3;
-  color: #0e6a3a;
+  background: var(--online-bg);
+  color: var(--online-text);
 }
 
 .badge.connecting {
-  background: #ffeebb;
-  color: #815f00;
+  background: var(--stale-bg);
+  color: var(--stale-text);
 }
 
 .badge.error,
 .badge.closed {
-  background: #ffdfe2;
-  color: #8f1d2c;
+  background: var(--offline-bg);
+  color: var(--offline-text);
 }
 
 .stats {
@@ -122,10 +134,31 @@ h1 {
   border-color: #9bb8eb;
 }
 
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin: 4px 0 16px;
+}
+
+.status-legend {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #445b80;
+}
+
+.empty-state {
+  color: #7a8fa8;
+  font-size: 14px;
+  padding: 12px 0;
+  margin: 0;
+}
+
 .view-switch {
   display: inline-flex;
   gap: 8px;
-  margin: 4px 0 16px;
+  margin: 0;
   background: #e8eef7;
   padding: 6px;
   border-radius: 12px;
@@ -182,6 +215,24 @@ td {
   font-size: 14px;
 }
 
+.nowrap { white-space: nowrap; }
+
+.conn-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.conn-pill {
+  border: 1px solid #c8d8ee;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  white-space: nowrap;
+  background: #f0f5fc;
+  color: #334e70;
+}
+
 .status {
   padding: 4px 8px;
   border-radius: 999px;
@@ -191,18 +242,18 @@ td {
 }
 
 .status.online {
-  background: #d2fae3;
-  color: #0e6a3a;
+  background: var(--online-bg);
+  color: var(--online-text);
 }
 
 .status.stale {
-  background: #ffeebb;
-  color: #815f00;
+  background: var(--stale-bg);
+  color: var(--stale-text);
 }
 
 .status.offline {
-  background: #ffdfe2;
-  color: #8f1d2c;
+  background: var(--offline-bg);
+  color: var(--offline-text);
 }
 
 .graph {
@@ -221,26 +272,43 @@ td {
 }
 
 .relay-node {
-  stroke: #ffffff;
-  stroke-width: 2;
+  stroke-width: 2.5;
+  fill-opacity: 0.1;
 }
 
 .relay-node.online {
-  fill: #17a35c;
+  fill: var(--online);
+  stroke: var(--online);
 }
 
 .relay-node.stale {
-  fill: #d0a102;
+  fill: var(--stale);
+  stroke: var(--stale);
 }
 
 .relay-node.offline {
-  fill: #c23447;
+  fill: var(--offline);
+  stroke: var(--offline);
 }
+
+.status-dot {
+  stroke: #ffffff;
+  stroke-width: 1.5;
+}
+
+.status-dot.online  { fill: var(--online); }
+.status-dot.stale   { fill: var(--stale); }
+.status-dot.offline { fill: var(--offline); }
 
 .node-label {
   fill: #112240;
   font-size: 12px;
   font-weight: 600;
+}
+
+.node-sublabel {
+  fill: #445b80;
+  font-size: 9px;
 }
 
 .group-label {
@@ -249,6 +317,27 @@ td {
   font-weight: 700;
   text-transform: uppercase;
 }
+
+.graph-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: #445b80;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.legend-dot.online  { background: var(--online); }
+.legend-dot.stale   { background: var(--stale); }
+.legend-dot.offline { background: var(--offline); }
 
 @media (max-width: 900px) {
   .stats,
