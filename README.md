@@ -174,6 +174,24 @@ To mark a relay as permanently offline, add its ID to `OFFLINE_RELAYS` in `test_
 OFFLINE_RELAYS: set[str] = {"relay-A4"}
 ```
 
+## Running Frontend Tests
+
+Tests live in `frontend/src/utils/relayHelpers.test.js` and run via [Vitest](https://vitest.dev/) inside Docker — no local Node.js required.
+
+```bash
+docker build --target test -f frontend/Dockerfile frontend/
+```
+
+Exit code 0 = all tests pass. Output shows per-test results from Vitest.
+
+The test suite covers `findTwoDisjointPaths` (Suurballe's algorithm):
+
+- triangle graph — two paths, vertex-disjoint check
+- square cycle — diagonal pair
+- linear chain — returns `null` (no second path possible)
+- disconnected graph — returns `null`
+- 2×5 grid with diagonals (mirrors `test_grid.py`) — four different endpoint pairs
+
 ## Development Notes
 
 - Backend validates ingest message order per WS connection (`register` first).

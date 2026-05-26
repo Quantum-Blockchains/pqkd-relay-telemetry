@@ -8,12 +8,9 @@ const PAD = 56
 
 const PATH_COLORS = ['#60a5fa', '#fb923c']
 
-function gridPositions(relays) {
+function gridPositions(relays, cols, rows) {
   const count = relays.length
   if (count === 0) return new Map()
-
-  const cols = Math.ceil(Math.sqrt(count))
-  const rows = Math.ceil(count / cols)
 
   const positions = new Map()
   relays.forEach((relay, i) => {
@@ -57,19 +54,19 @@ function pathLine(positions, nodeA, nodeB, color, key) {
 export function TopologyGraph({ relays }) {
   const [selected, setSelected] = useState([])
 
-  const cols = Math.ceil(Math.sqrt(relays.length))
-  const rows = Math.ceil(relays.length / cols)
+  const cols = relays.length === 0 ? 1 : Math.ceil(Math.sqrt(relays.length))
+  const rows = relays.length === 0 ? 1 : Math.ceil(relays.length / cols)
   const svgW = PAD * 2 + cols * CELL_W
   const svgH = PAD * 2 + rows * CELL_H
 
-  const positions = useMemo(() => gridPositions(relays), [relays])
+  const positions = useMemo(() => gridPositions(relays, cols, rows), [relays, cols, rows])
   const edges = useMemo(() => buildRelayEdges(relays), [relays])
+  const adj = useMemo(() => buildAdjacency(relays), [relays])
 
   const paths = useMemo(() => {
     if (selected.length !== 2) return null
-    const adj = buildAdjacency(relays)
     const result = findTwoDisjointPaths(adj, selected[0], selected[1])
-    if (result) {
+    if (result && import.meta.env.DEV) {
       const mid1 = new Set(result[0].slice(1, -1))
       const mid2 = new Set(result[1].slice(1, -1))
       const shared = [...mid1].filter(x => mid2.has(x))
@@ -77,7 +74,7 @@ export function TopologyGraph({ relays }) {
       else console.log('Paths OK:', result[0].join('→'), '|', result[1].join('→'))
     }
     return result
-  }, [selected, relays])
+  }, [selected, adj])
 
   if (relays.length === 0) return <p className="empty">No relay data.</p>
 
