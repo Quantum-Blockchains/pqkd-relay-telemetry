@@ -149,6 +149,31 @@ Services:
 - Backend: `localhost:8080`
 - Frontend: `http://localhost:5173`
 
+## Simulated Relay Grid (test_grid.py)
+
+`test_grid.py` simulates a 2×5 relay grid with diagonal connections and feeds it to the backend via raw WebSocket. No external dependencies — requires only Python 3.10+.
+
+**Topology**: 10 relays (`relay-A1`..`relay-A5`, `relay-B1`..`relay-B5`), grid + diagonals, no wrap-around. Corners have degree 3, interior nodes have degree 5. Every node has at least two vertex-disjoint paths to every other node.
+
+**Offline simulation**: relays listed in `OFFLINE_RELAYS` send only a register message and disconnect. They transition to `stale` after 15 s and `offline` after 30 s — useful for testing path failover in the topology view.
+
+```bash
+# Start the backend first (Docker or cargo run), then:
+python3 test_grid.py
+
+# Before re-running: clear backend state and kill old processes
+docker restart pqkd-relay-telemetry-backend
+kill $(pgrep -f test_grid.py)
+```
+
+By default connects to `localhost:8080`. Edit `HOST`/`PORT` at the top of the file to change.
+
+To mark a relay as permanently offline, add its ID to `OFFLINE_RELAYS` in `test_grid.py`:
+
+```python
+OFFLINE_RELAYS: set[str] = {"relay-A4"}
+```
+
 ## Development Notes
 
 - Backend validates ingest message order per WS connection (`register` first).

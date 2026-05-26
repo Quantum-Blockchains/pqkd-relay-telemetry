@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
 """
-Symulacja sieci 3×5 relay'ów (Python 3.10, bez zewn. bibliotek).
+Symulacja 10 relay'ów w topologii 2×5 z przekątnymi (Python 3.10, bez zewn. bibliotek).
 
-Topologia (ROWS=3, COLS=5):
+Topologia (ROWS=2, COLS=5) — grid + przekątne, bez wrap-around:
+
   relay-A1 - relay-A2 - relay-A3 - relay-A4 - relay-A5
-      |           |           |           |           |
+      | \×/     | \×/     | \×/     | \×/     |
   relay-B1 - relay-B2 - relay-B3 - relay-B4 - relay-B5
-      |           |           |           |           |
-  relay-C1 - relay-C2 - relay-C3 - relay-C4 - relay-C5
 
-Konwencja SAE ID: "<skrót-relay>-<skrót-sąsiada>"
-Np. relay-A1 ↔ relay-A2: sae_id="A1-A2" / paired_with="A2-A1"
+Stopnie:
+  narożniki (A1, A5, B1, B5): 3 połączenia
+  krawędzie (A2-A4, B2-B4):   5 połączeń
+
+Każdy node ma stopień ≥3 → gwarantuje 2 rozłączne wierzchołkowo ścieżki.
+Bez krawędzi wrap-around → brak mylących długich linii w widoku siatki.
 """
 
 import json
@@ -25,9 +28,9 @@ PORT       = 8080
 INTERVAL   = 8
 NETWORK_ID = "net-grid-alpha"
 
-ROWS = 3
+ROWS = 2
 COLS = 5
-ROW_LABELS = "ABCDEFGH"
+ROW_LABELS = "AB"
 
 
 def relay_name(row: int, col: int) -> str:
@@ -35,7 +38,6 @@ def relay_name(row: int, col: int) -> str:
 
 
 def sae_short(relay: str) -> str:
-    """relay-A1 → A1"""
     return relay.replace("relay-", "")
 
 
@@ -46,14 +48,18 @@ def build_topology() -> dict[str, list]:
             rid = relay_name(r, c)
             me  = sae_short(rid)
             pqkds = []
+            # Połączenia grid (4 kierunki, bez wrap)
             for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
                 nr, nc = r + dr, c + dc
                 if 0 <= nr < ROWS and 0 <= nc < COLS:
                     nbr = sae_short(relay_name(nr, nc))
-                    pqkds.append({
-                        "sae_id":      f"{me}-{nbr}",
-                        "paired_with": f"{nbr}-{me}",
-                    })
+                    pqkds.append({"sae_id": f"{me}-{nbr}", "paired_with": f"{nbr}-{me}"})
+            # Przekątne (oba kierunki, bez wrap)
+            for dr, dc in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < ROWS and 0 <= nc < COLS:
+                    nbr = sae_short(relay_name(nr, nc))
+                    pqkds.append({"sae_id": f"{me}-{nbr}", "paired_with": f"{nbr}-{me}"})
             nodes[rid] = pqkds
     return nodes
 
@@ -98,12 +104,19 @@ def make_msg(msg_type: str, relay_id: str, pqkds: list) -> str:
     })
 
 
+# Relay'e z tej listy wysyłają tylko register, potem milczą → idą offline po ~30s
+OFFLINE_RELAYS: set[str] = {"relay-A4"}
+
+
 def relay_loop(relay_id: str, pqkds: list):
+    offline = relay_id in OFFLINE_RELAYS
     while True:
         try:
             s = ws_connect()
             ws_send(s, make_msg("pqkd-relay.register", relay_id, pqkds))
-            print(f"[{relay_id}] connected ({len(pqkds)} links)")
+            print(f"[{relay_id}] connected ({len(pqkds)} links)" + (" [will go offline]" if offline else ""))
+            if offline:
+                return  # brak heartbeatów → stale po 15s, offline po 30s
             while True:
                 time.sleep(INTERVAL)
                 ws_send(s, make_msg("pqkd-relay.heartbeat", relay_id, pqkds))
@@ -114,7 +127,10 @@ def relay_loop(relay_id: str, pqkds: list):
 
 if __name__ == "__main__":
     nodes = build_topology()
-    print(f"Topology: {ROWS}×{COLS} = {len(nodes)} relays, network={NETWORK_ID!r}\n")
+    print(f"Topology: {ROWS}×{COLS} = {len(nodes)} relays, network={NETWORK_ID!r}")
+    for rid, pqkds in nodes.items():
+        print(f"  {rid}: degree {len(pqkds)}")
+    print()
 
     for relay_id, pqkds in nodes.items():
         t = threading.Thread(target=relay_loop, args=(relay_id, pqkds), daemon=True)
