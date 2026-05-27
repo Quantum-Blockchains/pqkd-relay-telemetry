@@ -28,13 +28,18 @@ export function formatTime(utcString) {
   return new Date(utcString).toLocaleTimeString()
 }
 
-export function connectedRelayIds(relay, allRelays) {
+function buildOwnerMap(relays) {
   const ownerBySaeId = new Map()
-  for (const r of allRelays) {
-    for (const b of r.pqkds || []) {
-      if (b?.sae_id) ownerBySaeId.set(b.sae_id, r.relay_id)
+  for (const relay of relays) {
+    for (const b of relay.pqkds || []) {
+      if (b?.sae_id) ownerBySaeId.set(b.sae_id, relay.relay_id)
     }
   }
+  return ownerBySaeId
+}
+
+export function connectedRelayIds(relay, allRelays) {
+  const ownerBySaeId = buildOwnerMap(allRelays)
   const result = new Set()
   for (const b of relay.pqkds || []) {
     const target = ownerBySaeId.get(b?.paired_with)
@@ -47,17 +52,11 @@ export function buildAdjacency(relays) {
   const adj = {}
   for (const relay of relays) adj[relay.relay_id] = []
 
-  const ownerBySaeId = {}
-  for (const relay of relays) {
-    for (const b of relay.pqkds || []) {
-      if (b?.sae_id) ownerBySaeId[b.sae_id] = relay.relay_id
-    }
-  }
-
+  const ownerBySaeId = buildOwnerMap(relays)
   const seen = new Set()
   for (const relay of relays) {
     for (const b of relay.pqkds || []) {
-      const target = ownerBySaeId[b?.paired_with]
+      const target = ownerBySaeId.get(b?.paired_with)
       if (!target || target === relay.relay_id) continue
       const edgeKey = [relay.relay_id, target].sort().join('::')
       if (seen.has(edgeKey)) continue
