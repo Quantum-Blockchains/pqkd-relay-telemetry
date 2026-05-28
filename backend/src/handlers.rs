@@ -1,10 +1,10 @@
 use axum::{
+    Json,
     extract::{
         State,
         ws::{Message, WebSocket, WebSocketUpgrade},
     },
     response::IntoResponse,
-    Json,
 };
 use futures_util::StreamExt;
 use tracing::{error, info, warn};

@@ -26,12 +26,12 @@ export function RelayTable({ networkId, relays }) {
         </div>
       </div>
       {relays.length === 0 ? (
-        <div className="empty">No relays connected.</div>
+        <div className="empty">No nodes connected.</div>
       ) : (
         <table className="table">
           <thead>
             <tr>
-              <th>Relay ID</th>
+              <th>Node ID</th>
               <th>Status</th>
               <th>Connections</th>
               <th>Last seen</th>

@@ -21,7 +21,7 @@ function Sparkline({ data, color = 'var(--accent)' }) {
 }
 
 export default function App() {
-  const { connection, stateMap, lastUpdate } = useRelayStore()
+  const { connection, stateMap, connectionsMap, lastUpdate } = useRelayStore()
   const [view, setView]               = useState('table')
   const [chainQuery, setChainQuery]   = useState('')
   const [selectedChain, setSelectedChain] = useState('all')
@@ -63,13 +63,19 @@ export default function App() {
     return { online, stale, offline, events, total: online + stale + offline }
   }, [allNetworks])
 
-  // Sample total events every 3s for a smooth sparkline
+  // Sample event rate every 3s (delta between consecutive totals → events/min)
+  const SAMPLE_MS = 3000
   const totalsRef = useRef(totals)
+  const prevEventsRef = useRef(0)
   useEffect(() => { totalsRef.current = totals }, [totals])
   useEffect(() => {
     const id = setInterval(() => {
-      setEventHistory(h => [...h.slice(-19), totalsRef.current.events])
-    }, 3000)
+      const current = totalsRef.current.events
+      const delta = current - prevEventsRef.current
+      prevEventsRef.current = current
+      const ratePerMin = Math.round(delta * (60_000 / SAMPLE_MS))
+      setEventHistory(h => [...h.slice(-19), ratePerMin])
+    }, SAMPLE_MS)
     return () => clearInterval(id)
   }, [])
 
@@ -124,7 +130,7 @@ export default function App() {
           <div className="kpi-sub">{networks.length} visible</div>
         </div>
         <div className="kpi">
-          <div className="kpi-label">Relays</div>
+          <div className="kpi-label">Nodes</div>
           <div className="kpi-value">{totals.total}</div>
           <div className="kpi-sub">
             <span style={{ color: 'color-mix(in oklch, var(--online) 80%, white)' }}>● {totals.online}</span>
@@ -133,11 +139,11 @@ export default function App() {
           </div>
         </div>
         <div className="kpi">
-          <div className="kpi-label">Total Events</div>
+          <div className="kpi-label">Event Rate</div>
           <div className="kpi-value" style={{ fontFeatureSettings: "'tnum'" }}>
-            {totals.events.toLocaleString()}
+            {eventHistory[eventHistory.length - 1]}
           </div>
-          <div className="kpi-sub">cumulative</div>
+          <div className="kpi-sub">events / min</div>
           <Sparkline data={eventHistory} color="var(--accent)" />
         </div>
         <div className="kpi">
@@ -200,7 +206,7 @@ export default function App() {
         networks.map(([networkId, relays]) => (
           view === 'table'
             ? <RelayTable key={networkId} networkId={networkId} relays={relays} />
-            : <TopologyGraph key={networkId} networkId={networkId} relays={relays} />
+            : <TopologyGraph key={networkId} networkId={networkId} relays={relays} connections={connectionsMap.get(networkId) ?? []} />
         ))
       )}
     </div>

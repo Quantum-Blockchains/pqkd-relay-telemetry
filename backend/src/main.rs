@@ -16,7 +16,8 @@ use state::{AppState, TelemetryStore};
 async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "telemetry_backend=info,tower_http=info".to_string()),
+            std::env::var("RUST_LOG")
+                .unwrap_or_else(|_| "telemetry_backend=info,tower_http=info".to_string()),
         )
         .init();
 

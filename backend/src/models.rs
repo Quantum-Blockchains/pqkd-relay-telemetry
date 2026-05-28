@@ -10,11 +10,19 @@ pub enum IngestMessage {
     Heartbeat(RelayHeartbeat),
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct TopologyEdge {
+    pub first: String,
+    pub second: String,
+}
+
 #[derive(Debug, Clone, Deserialize)]
 pub struct RelayRegister {
     pub network_id: String,
     pub relay_id: String,
     pub pqkds: Vec<PqkdBinding>,
+    #[serde(default)]
+    pub connections: Vec<TopologyEdge>,
     pub timestamp_utc: DateTime<Utc>,
 }
 
@@ -56,6 +64,7 @@ pub struct RelayView {
 pub struct NetworkView {
     pub network_id: String,
     pub relays: Vec<RelayView>,
+    pub connections: Vec<TopologyEdge>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -23,8 +23,8 @@ import struct
 import threading
 import time
 
-HOST       = "localhost"
-PORT       = 8080
+HOST       = os.environ.get("HOST", "localhost")
+PORT       = int(os.environ.get("PORT", "8080"))
 INTERVAL   = 8
 NETWORK_ID = "net-grid-alpha"
 
@@ -34,15 +34,16 @@ ROW_LABELS = "AB"
 
 
 def relay_name(row: int, col: int) -> str:
-    return f"relay-{ROW_LABELS[row]}{col + 1}"
+    return f"node-{ROW_LABELS[row]}{col + 1}"
 
 
 def sae_short(relay: str) -> str:
-    return relay.replace("relay-", "")
+    return relay.replace("node-", "")
 
 
-def build_topology() -> dict[str, list]:
+def build_topology() -> tuple[dict[str, list], list[dict]]:
     nodes: dict[str, list] = {}
+    edge_set: set[tuple] = set()
     for r in range(ROWS):
         for c in range(COLS):
             rid = relay_name(r, c)
@@ -54,14 +55,17 @@ def build_topology() -> dict[str, list]:
                 if 0 <= nr < ROWS and 0 <= nc < COLS:
                     nbr = sae_short(relay_name(nr, nc))
                     pqkds.append({"sae_id": f"{me}-{nbr}", "paired_with": f"{nbr}-{me}"})
+                    edge_set.add(tuple(sorted([rid, relay_name(nr, nc)])))
             # Przekątne (oba kierunki, bez wrap)
             for dr, dc in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
                 nr, nc = r + dr, c + dc
                 if 0 <= nr < ROWS and 0 <= nc < COLS:
                     nbr = sae_short(relay_name(nr, nc))
                     pqkds.append({"sae_id": f"{me}-{nbr}", "paired_with": f"{nbr}-{me}"})
+                    edge_set.add(tuple(sorted([rid, relay_name(nr, nc)])))
             nodes[rid] = pqkds
-    return nodes
+    connections = [{"first": a, "second": b} for a, b in sorted(edge_set)]
+    return nodes, connections
 
 
 def ws_connect() -> socket.socket:
@@ -94,26 +98,29 @@ def ws_send(s: socket.socket, text: str):
     s.sendall(header + masked)
 
 
-def make_msg(msg_type: str, relay_id: str, pqkds: list) -> str:
-    return json.dumps({
+def make_msg(msg_type: str, relay_id: str, pqkds: list, connections: list | None = None) -> str:
+    payload: dict = {
         "type":          msg_type,
         "network_id":    NETWORK_ID,
         "relay_id":      relay_id,
         "pqkds":         pqkds,
         "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-    })
+    }
+    if connections is not None:
+        payload["connections"] = connections
+    return json.dumps(payload)
 
 
 # Relay'e z tej listy wysyłają tylko register, potem milczą → idą offline po ~30s
-OFFLINE_RELAYS: set[str] = {"relay-A4"}
+OFFLINE_RELAYS: set[str] = {"node-A4"}
 
 
-def relay_loop(relay_id: str, pqkds: list):
+def relay_loop(relay_id: str, pqkds: list, connections: list):
     offline = relay_id in OFFLINE_RELAYS
     while True:
         try:
             s = ws_connect()
-            ws_send(s, make_msg("pqkd-relay.register", relay_id, pqkds))
+            ws_send(s, make_msg("pqkd-relay.register", relay_id, pqkds, connections))
             print(f"[{relay_id}] connected ({len(pqkds)} links)" + (" [will go offline]" if offline else ""))
             if offline:
                 return  # brak heartbeatów → stale po 15s, offline po 30s
@@ -126,14 +133,14 @@ def relay_loop(relay_id: str, pqkds: list):
 
 
 if __name__ == "__main__":
-    nodes = build_topology()
-    print(f"Topology: {ROWS}×{COLS} = {len(nodes)} relays, network={NETWORK_ID!r}")
+    nodes, connections = build_topology()
+    print(f"Topology: {ROWS}×{COLS} = {len(nodes)} relays, {len(connections)} edges, network={NETWORK_ID!r}")
     for rid, pqkds in nodes.items():
         print(f"  {rid}: degree {len(pqkds)}")
     print()
 
     for relay_id, pqkds in nodes.items():
-        t = threading.Thread(target=relay_loop, args=(relay_id, pqkds), daemon=True)
+        t = threading.Thread(target=relay_loop, args=(relay_id, pqkds, connections), daemon=True)
         t.start()
         time.sleep(0.05)
 

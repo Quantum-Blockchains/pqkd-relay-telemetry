@@ -34,7 +34,7 @@ function gridPositions(relays, cols, rows) {
 
 const STATUS_COLOR = { online: 'var(--online)', stale: 'var(--stale)', offline: 'var(--offline)' }
 
-export function TopologyGraph({ networkId, relays }) {
+export function TopologyGraph({ networkId, relays, connections }) {
   const [selected, setSelected] = useState([])
   const wrapRef = useRef(null)
   const [svgW, setSvgW] = useState(1100)
@@ -54,7 +54,7 @@ export function TopologyGraph({ networkId, relays }) {
 
   const positions = useMemo(() => gridPositions(relays, cols, rows), [relays, cols, rows])
   const edges     = useMemo(() => buildRelayEdges(relays), [relays])
-  const adj       = useMemo(() => buildAdjacency(relays), [relays])
+  const adj       = useMemo(() => buildAdjacency(relays, connections), [relays, connections])
 
   const paths = useMemo(() => {
     if (selected.length !== 2) return null
@@ -97,7 +97,7 @@ export function TopologyGraph({ networkId, relays }) {
   }
 
   if (relays.length === 0) return (
-    <div className="net-panel"><div className="empty">No relay data.</div></div>
+    <div className="net-panel"><div className="empty">No node data.</div></div>
   )
 
   const onlineCount  = relays.filter(r => statusClass(r.status) === 'online').length

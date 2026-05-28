@@ -1,6 +1,6 @@
 use crate::models::{
-    IngestMessage, NetworkView, NetworksSnapshot, PqkdBinding, RelayHeartbeat, RelayRegister, RelayStatus, RelayView,
-    StreamEvent,
+    IngestMessage, NetworkView, NetworksSnapshot, PqkdBinding, RelayHeartbeat, RelayRegister,
+    RelayStatus, RelayView, StreamEvent, TopologyEdge,
 };
 use chrono::{DateTime, Duration, Utc};
 use std::collections::{BTreeMap, HashMap};
@@ -34,6 +34,7 @@ pub struct AppState {
 
 pub struct TelemetryStore {
     inner: RwLock<HashMap<RelayKey, RelayState>>,
+    topology: RwLock<HashMap<String, Vec<TopologyEdge>>>,
     stream_tx: broadcast::Sender<String>,
 }
 
@@ -41,6 +42,7 @@ impl TelemetryStore {
     pub fn new(stream_tx: broadcast::Sender<String>) -> Self {
         Self {
             inner: RwLock::new(HashMap::new()),
+            topology: RwLock::new(HashMap::new()),
             stream_tx,
         }
     }
@@ -51,11 +53,23 @@ impl TelemetryStore {
 
     pub async fn apply_event(&self, event: IngestMessage) {
         let now = Utc::now();
+
+        if let IngestMessage::Register(ref payload) = event {
+            if !payload.connections.is_empty() {
+                self.topology
+                    .write()
+                    .await
+                    .insert(payload.network_id.clone(), payload.connections.clone());
+            }
+        }
+
         let delta = {
             let mut guard = self.inner.write().await;
             let state = match event {
                 IngestMessage::Register(payload) => upsert_from_register(&mut guard, payload, now),
-                IngestMessage::Heartbeat(payload) => upsert_from_heartbeat(&mut guard, payload, now),
+                IngestMessage::Heartbeat(payload) => {
+                    upsert_from_heartbeat(&mut guard, payload, now)
+                }
             };
             state.clone()
         };
@@ -91,6 +105,7 @@ impl TelemetryStore {
 
     pub async fn snapshot(&self) -> NetworksSnapshot {
         let guard = self.inner.read().await;
+        let topo_guard = self.topology.read().await;
         let mut grouped: BTreeMap<String, Vec<RelayView>> = BTreeMap::new();
         for state in guard.values() {
             grouped
@@ -105,7 +120,14 @@ impl TelemetryStore {
 
         let networks = grouped
             .into_iter()
-            .map(|(network_id, relays)| NetworkView { network_id, relays })
+            .map(|(network_id, relays)| {
+                let connections = topo_guard.get(&network_id).cloned().unwrap_or_default();
+                NetworkView {
+                    network_id,
+                    relays,
+                    connections,
+                }
+            })
             .collect();
 
         NetworksSnapshot {
@@ -123,11 +145,8 @@ impl TelemetryStore {
     }
 
     fn emit(&self, event: StreamEvent) {
-        match serde_json::to_string(&event) {
-            Ok(payload) => {
-                let _ = self.stream_tx.send(payload);
-            }
-            Err(_) => {}
+        if let Ok(payload) = serde_json::to_string(&event) {
+            let _ = self.stream_tx.send(payload);
         }
     }
 }

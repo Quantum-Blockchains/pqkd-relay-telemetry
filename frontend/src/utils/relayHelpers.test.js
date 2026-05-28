@@ -93,7 +93,7 @@ describe('2×5 grid with diagonals', () => {
   // Grid edges (no wrap) + diagonal edges between rows
   const ROWS = 2, COLS = 5
   const ROW = 'AB'
-  const name = (r, c) => `relay-${ROW[r]}${c + 1}`
+  const name = (r, c) => `node-${ROW[r]}${c + 1}`
 
   const spec = {}
   for (let r = 0; r < ROWS; r++) {
@@ -109,10 +109,10 @@ describe('2×5 grid with diagonals', () => {
   const relays = makeRelays(spec)
 
   const pairs = [
-    ['relay-A1', 'relay-B5'],
-    ['relay-A3', 'relay-B4'],
-    ['relay-A1', 'relay-A5'],
-    ['relay-B1', 'relay-A5'],
+    ['node-A1', 'node-B5'],
+    ['node-A3', 'node-B4'],
+    ['node-A1', 'node-A5'],
+    ['node-B1', 'node-A5'],
   ]
 
   for (const [src, dst] of pairs) {

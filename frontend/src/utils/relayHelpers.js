@@ -48,9 +48,19 @@ export function connectedRelayIds(relay, allRelays) {
   return [...result]
 }
 
-export function buildAdjacency(relays) {
+export function buildAdjacency(relays, connections) {
   const adj = {}
   for (const relay of relays) adj[relay.relay_id] = []
+
+  if (connections?.length) {
+    for (const { first, second } of connections) {
+      if (adj[first] !== undefined && adj[second] !== undefined) {
+        if (!adj[first].includes(second)) adj[first].push(second)
+        if (!adj[second].includes(first)) adj[second].push(first)
+      }
+    }
+    return adj
+  }
 
   const ownerBySaeId = buildOwnerMap(relays)
   const seen = new Set()

@@ -7,6 +7,7 @@ const BACKOFF_MAX_MS = 60_000
 export function useRelayStore() {
   const [connection, setConnection] = useState('connecting')
   const [stateMap, setStateMap] = useState(new Map())
+  const [connectionsMap, setConnectionsMap] = useState(new Map())
   const [lastUpdate, setLastUpdate] = useState(null)
 
   const retryRef = useRef(0)
@@ -43,6 +44,11 @@ export function useRelayStore() {
 
       if (data.type === 'state.snapshot') {
         setStateMap(toMapFromNetworks(data.networks))
+        const conns = new Map()
+        for (const net of data.networks || []) {
+          if (net.connections?.length) conns.set(net.network_id, net.connections)
+        }
+        setConnectionsMap(conns)
         setLastUpdate(data.generated_at_utc)
         return
       }
@@ -73,5 +79,5 @@ export function useRelayStore() {
     }
   }, [connect])
 
-  return { connection, stateMap, lastUpdate }
+  return { connection, stateMap, connectionsMap, lastUpdate }
 }

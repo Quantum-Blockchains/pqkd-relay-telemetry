@@ -31,14 +31,20 @@ Data flow:
 {
   "type": "pqkd-relay.register",
   "network_id": "pqkd-example-network",
-  "relay_id": "relay-7",
+  "relay_id": "node-7",
   "pqkds": [
     { "sae_id": "Azure_16SAE", "paired_with": "Azure_15SAE" },
     { "sae_id": "Azure_17SAE", "paired_with": "Azure_18SAE" }
   ],
+  "connections": [
+    { "first": "node-7", "second": "node-8" },
+    { "first": "node-7", "second": "node-6" }
+  ],
   "timestamp_utc": "2026-05-22T13:20:10.123+00:00"
 }
 ```
+
+`connections` is optional (`[]` or absent = fallback to topology derived from `pqkds`). When present, each entry is an undirected edge in the relay mesh. All nodes in the network should send the same complete edge list so the backend can store ground-truth topology.
 
 ### Heartbeat (periodic)
 
@@ -109,7 +115,9 @@ Status transitions are time-based from `last_seen_utc`:
 
 ### Topology rule
 
-Topology edges are created from `paired_with` relationships:
+When `connections` is provided in the register message, those edges are used directly for topology rendering and Suurballe path-finding.
+
+Fallback (when `connections` is absent): edges are derived from `paired_with` relationships:
 
 - if relay A has a PQKD binding with `paired_with = X`
 - and `X` is hosted (`sae_id`) by relay B
@@ -141,7 +149,7 @@ Frontend runs on `http://localhost:5173`.
 From repo root:
 
 ```bash
-docker compose up --build
+docker compose up -d
 ```
 
 Services:
@@ -149,11 +157,21 @@ Services:
 - Backend: `localhost:8080`
 - Frontend: `http://localhost:5173`
 
+> **Note:** if port 8080 is in use by a stray `telemetry-backend` process (e.g. from a previous `cargo run`), Docker will fail to start. Run `pkill -f telemetry-backend` first.
+
+To rebuild after code changes:
+
+```bash
+docker compose build --no-cache backend   # after backend changes
+docker compose build --no-cache frontend  # after frontend changes
+docker compose up -d
+```
+
 ## Simulated Relay Grid (test_grid.py)
 
 `test_grid.py` simulates a 2×5 relay grid with diagonal connections and feeds it to the backend via raw WebSocket. No external dependencies — requires only Python 3.10+.
 
-**Topology**: 10 relays (`relay-A1`..`relay-A5`, `relay-B1`..`relay-B5`), grid + diagonals, no wrap-around. Corners have degree 3, interior nodes have degree 5. Every node has at least two vertex-disjoint paths to every other node.
+**Topology**: 10 nodes (`node-A1`..`node-A5`, `node-B1`..`node-B5`), grid + diagonals, no wrap-around. Corners have degree 3, interior nodes have degree 5. Every node has at least two vertex-disjoint paths to every other node. Each register message includes the full 21-edge connection list so the backend stores ground-truth topology.
 
 **Offline simulation**: relays listed in `OFFLINE_RELAYS` send only a register message and disconnect. They transition to `stale` after 15 s and `offline` after 30 s — useful for testing path failover in the topology view.
 
@@ -168,10 +186,10 @@ kill $(pgrep -f test_grid.py)
 
 By default connects to `localhost:8080`. Edit `HOST`/`PORT` at the top of the file to change.
 
-To mark a relay as permanently offline, add its ID to `OFFLINE_RELAYS` in `test_grid.py`:
+To mark a node as permanently offline, add its ID to `OFFLINE_RELAYS` in `test_grid.py`:
 
 ```python
-OFFLINE_RELAYS: set[str] = {"relay-A4"}
+OFFLINE_RELAYS: set[str] = {"node-A4"}
 ```
 
 ## Running Frontend Tests
