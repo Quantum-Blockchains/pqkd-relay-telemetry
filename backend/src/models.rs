@@ -34,10 +34,22 @@ pub struct RelayHeartbeat {
     pub timestamp_utc: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum PqkdStatus {
+    Ok,
+    Error,
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PqkdBinding {
     pub sae_id: String,
     pub paired_with: String,
+    #[serde(default)]
+    pub status: PqkdStatus,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -86,4 +98,48 @@ pub enum StreamEvent {
         generated_at_utc: DateTime<Utc>,
         relay: RelayView,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pqkd_status_deserializes_ok() {
+        let b: PqkdBinding = serde_json::from_str(
+            r#"{"sae_id":"a","paired_with":"b","status":"ok"}"#,
+        ).unwrap();
+        assert_eq!(b.status, PqkdStatus::Ok);
+    }
+
+    #[test]
+    fn pqkd_status_deserializes_error() {
+        let b: PqkdBinding = serde_json::from_str(
+            r#"{"sae_id":"a","paired_with":"b","status":"error"}"#,
+        ).unwrap();
+        assert_eq!(b.status, PqkdStatus::Error);
+    }
+
+    #[test]
+    fn pqkd_status_missing_field_defaults_to_unknown() {
+        let b: PqkdBinding = serde_json::from_str(
+            r#"{"sae_id":"a","paired_with":"b"}"#,
+        ).unwrap();
+        assert_eq!(b.status, PqkdStatus::Unknown);
+    }
+
+    #[test]
+    fn pqkd_status_unrecognized_value_falls_back_to_unknown() {
+        let b: PqkdBinding = serde_json::from_str(
+            r#"{"sae_id":"a","paired_with":"b","status":"warning"}"#,
+        ).unwrap();
+        assert_eq!(b.status, PqkdStatus::Unknown);
+    }
+
+    #[test]
+    fn pqkd_status_serializes_snake_case() {
+        assert_eq!(serde_json::to_string(&PqkdStatus::Ok).unwrap(), r#""ok""#);
+        assert_eq!(serde_json::to_string(&PqkdStatus::Error).unwrap(), r#""error""#);
+        assert_eq!(serde_json::to_string(&PqkdStatus::Unknown).unwrap(), r#""unknown""#);
+    }
 }
