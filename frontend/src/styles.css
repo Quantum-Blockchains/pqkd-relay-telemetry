@@ -531,6 +531,89 @@ body {
   font-size: 12px;
 }
 
+/* ── Accordion row ─────────────────────────────────────────────── */
+.row-expandable {
+  cursor: pointer;
+  user-select: none;
+}
+.row-expandable:hover { background: color-mix(in oklch, var(--accent) 4%, transparent); }
+.row-open { background: color-mix(in oklch, var(--accent) 6%, transparent) !important; }
+
+.chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--fg-3);
+  flex-shrink: 0;
+  transition: transform 180ms ease, color 120ms;
+}
+.chevron-open {
+  transform: rotate(180deg);
+  color: var(--accent);
+}
+
+.row-detail td {
+  padding: 0 22px 14px 48px;
+  background: color-mix(in oklch, var(--bg-0) 60%, transparent);
+  border-bottom: 1px solid var(--hairline);
+}
+
+/* PQKD table inside accordion */
+.pqkd-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 6px;
+}
+.pqkd-table thead th {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  font-weight: 500;
+  padding: 6px 14px 6px 0;
+  border-bottom: 1px solid var(--hairline);
+}
+.pqkd-table tbody tr:last-child td { border-bottom: 0; }
+.pqkd-table tbody td {
+  padding: 7px 14px 7px 0;
+  border-bottom: 1px solid color-mix(in oklch, white 2%, transparent);
+  vertical-align: middle;
+}
+.pqkd-sae, .pqkd-paired {
+  font-family: var(--font-mono);
+  color: var(--fg-1);
+  font-size: 12px;
+}
+.pqkd-status-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-2);
+  text-transform: lowercase;
+}
+
+/* PQKD status dots */
+.pqkd-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.pqkd-ok      { background: var(--online);  box-shadow: 0 0 6px color-mix(in oklch, var(--online) 50%, transparent); }
+.pqkd-error   { background: var(--offline); box-shadow: 0 0 6px color-mix(in oklch, var(--offline) 45%, transparent); }
+.pqkd-unknown { background: var(--fg-3); }
+
+.pqkd-empty {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+  padding: 8px 0;
+}
+
 /* ── Topology ──────────────────────────────────────────────────── */
 .topo-wrap {
   position: relative;
