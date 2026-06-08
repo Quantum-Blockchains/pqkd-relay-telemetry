@@ -1,306 +1,214 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useRelayStore } from './hooks/useRelayStore'
+import { toSortedNetworksMap, statusClass } from './utils/relayHelpers'
+import { RelayTable } from './components/RelayTable'
+import { TopologyGraph } from './components/TopologyGraph'
+import './styles.css'
 
-const STREAM_URL = 'ws://localhost:8080/stream'
-
-function toMapFromNetworks(networks) {
-  const map = new Map()
-  for (const network of networks || []) {
-    const relayMap = new Map()
-    for (const relay of network.relays || []) {
-      relayMap.set(relay.relay_id, relay)
-    }
-    map.set(network.network_id, relayMap)
-  }
-  return map
-}
-
-function toSortedNetworksMap(stateMap) {
-  return [...stateMap.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([networkId, relayMap]) => {
-      const relays = [...relayMap.values()].sort((a, b) => a.relay_id.localeCompare(b.relay_id))
-      return [networkId, relays]
-    })
-}
-
-function statusClass(status) {
-  return status || 'offline'
-}
-
-function buildRelayEdges(relays) {
-  const ownerBySaeId = new Map()
-  for (const relay of relays) {
-    for (const binding of relay.pqkds || []) {
-      if (binding?.sae_id) {
-        ownerBySaeId.set(binding.sae_id, relay.relay_id)
-      }
-    }
-  }
-
-  const edgeMap = new Map()
-  for (const relay of relays) {
-    for (const binding of relay.pqkds || []) {
-      const targetRelayId = ownerBySaeId.get(binding?.paired_with)
-      if (!targetRelayId || targetRelayId === relay.relay_id) continue
-
-      const [a, b] = [relay.relay_id, targetRelayId].sort((x, y) => x.localeCompare(y))
-      const key = `${a}::${b}`
-      const current = edgeMap.get(key) || { from: a, to: b, links: [] }
-      current.links.push(`${binding.sae_id}->${binding.paired_with}`)
-      edgeMap.set(key, current)
-    }
-  }
-
-  return [...edgeMap.values()]
-}
-
-function TopologyGraph({ relays }) {
-  const width = 1100
-  const height = 640
-  const centerX = width / 2
-  const centerY = height / 2
-  const radius = Math.min(width, height) * 0.34
-  const nodeRadius = 24
-
-  const edges = buildRelayEdges(relays)
-
-  const positions = new Map(
-    relays.map((relay, index) => {
-      const angle = (2 * Math.PI * index) / Math.max(relays.length, 1) - Math.PI / 2
-      return [
-        relay.relay_id,
-        {
-          x: centerX + radius * Math.cos(angle),
-          y: centerY + radius * Math.sin(angle),
-        },
-      ]
-    })
-  )
-
+function Sparkline({ data, color = 'var(--accent)' }) {
+  if (!data || data.length < 2) return null
+  const w = 64, h = 24
+  const min = Math.min(...data), max = Math.max(...data)
+  const span = max - min || 1
+  const pts = data
+    .map((v, i) => `${((i / (data.length - 1)) * w).toFixed(1)},${(h - ((v - min) / span) * h).toFixed(1)}`)
+    .join(' ')
   return (
-    <div className="graph-wrap">
-      <svg viewBox={`0 0 ${width} ${height}`} className="graph" role="img" aria-label="relay topology">
-        <g>
-          {edges.map((edge) => {
-            const from = positions.get(edge.from)
-            const to = positions.get(edge.to)
-            if (!from || !to) return null
-            return (
-              <line
-                key={`${edge.from}-${edge.to}`}
-                x1={from.x}
-                y1={from.y}
-                x2={to.x}
-                y2={to.y}
-                className="edge"
-              >
-                <title>{`${edge.from} ↔ ${edge.to} | ${edge.links.join(', ')}`}</title>
-              </line>
-            )
-          })}
-        </g>
-
-        <g>
-          {relays.map((relay) => {
-            const pos = positions.get(relay.relay_id)
-            if (!pos) return null
-            return (
-              <g key={relay.relay_id}>
-                <circle cx={pos.x} cy={pos.y} r={nodeRadius} className={`relay-node ${statusClass(relay.status)}`} />
-                <text x={pos.x} y={pos.y + 45} className="node-label" textAnchor="middle">
-                  {relay.relay_id}
-                </text>
-              </g>
-            )
-          })}
-        </g>
-
-        <text x={centerX} y={34} className="group-label" textAnchor="middle">
-          Relay-to-Relay Topology
-        </text>
-      </svg>
-    </div>
+    <svg className="kpi-spark" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
   )
 }
 
 export default function App() {
-  const [connection, setConnection] = useState('connecting')
-  const [lastUpdate, setLastUpdate] = useState(null)
-  const [stateMap, setStateMap] = useState(new Map())
-  const [view, setView] = useState('table')
-  const [chainQuery, setChainQuery] = useState('')
+  const { connection, stateMap, connectionsMap, lastUpdate } = useRelayStore()
+  const [view, setView]               = useState('table')
+  const [chainQuery, setChainQuery]   = useState('')
   const [selectedChain, setSelectedChain] = useState('all')
+  const [darkMode, setDarkMode]       = useState(true)
+  const [eventHistory, setEventHistory] = useState([0])
 
+  // Apply theme to <html>
   useEffect(() => {
-    const ws = new WebSocket(STREAM_URL)
-
-    ws.onopen = () => setConnection('connected')
-    ws.onerror = () => setConnection('error')
-    ws.onclose = () => setConnection('closed')
-
-    ws.onmessage = (event) => {
-      let data
-      try {
-        data = JSON.parse(event.data)
-      } catch {
-        return
-      }
-
-      if (data.type === 'state.snapshot') {
-        setStateMap(toMapFromNetworks(data.networks))
-        setLastUpdate(data.generated_at_utc)
-        return
-      }
-
-      if (data.type === 'state.delta' && data.relay) {
-        setStateMap((prev) => {
-          const next = new Map(prev)
-          const networkId = data.relay.network_id
-          const relayId = data.relay.relay_id
-          const existing = next.get(networkId) || new Map()
-          const relayMap = new Map(existing)
-          relayMap.set(relayId, data.relay)
-          next.set(networkId, relayMap)
-          return next
-        })
-        setLastUpdate(data.generated_at_utc)
-      }
-    }
-
-    return () => ws.close()
-  }, [])
+    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light')
+  }, [darkMode])
 
   const allNetworks = useMemo(() => toSortedNetworksMap(stateMap), [stateMap])
-  const availableChains = useMemo(() => allNetworks.map(([networkId]) => networkId), [allNetworks])
+  const availableChains = useMemo(() => allNetworks.map(([id]) => id), [allNetworks])
 
   const matchedChains = useMemo(() => {
     const q = chainQuery.trim().toLowerCase()
-    if (!q) return availableChains
-    return availableChains.filter((id) => id.toLowerCase().includes(q))
+    return q ? availableChains.filter(id => id.toLowerCase().includes(q)) : availableChains
   }, [availableChains, chainQuery])
 
   const networks = useMemo(() => {
-    const base = allNetworks.filter(([networkId]) => matchedChains.includes(networkId))
-    if (selectedChain === 'all') return base
-    return base.filter(([networkId]) => networkId === selectedChain)
+    const base = allNetworks.filter(([id]) => matchedChains.includes(id))
+    return selectedChain === 'all' ? base : base.filter(([id]) => id === selectedChain)
   }, [allNetworks, matchedChains, selectedChain])
 
   useEffect(() => {
-    if (selectedChain === 'all') return
-    if (!availableChains.includes(selectedChain)) {
-      setSelectedChain('all')
-    }
+    if (selectedChain !== 'all' && !availableChains.includes(selectedChain)) setSelectedChain('all')
   }, [availableChains, selectedChain])
 
-  const relayCount = useMemo(
-    () => networks.reduce((sum, [, relays]) => sum + relays.length, 0),
-    [networks]
-  )
+  // Totals across all networks
+  const totals = useMemo(() => {
+    let online = 0, stale = 0, offline = 0, events = 0
+    allNetworks.forEach(([, relays]) => relays.forEach(r => {
+      const s = statusClass(r.status)
+      if (s === 'online') online++
+      else if (s === 'stale') stale++
+      else offline++
+      events += r.event_count ?? 0
+    }))
+    return { online, stale, offline, events, total: online + stale + offline }
+  }, [allNetworks])
+
+  // Sample event rate every 3s (delta between consecutive totals → events/min)
+  const SAMPLE_MS = 3000
+  const totalsRef = useRef(totals)
+  const prevEventsRef = useRef(0)
+  useEffect(() => { totalsRef.current = totals }, [totals])
+  useEffect(() => {
+    const id = setInterval(() => {
+      const current = totalsRef.current.events
+      const delta = current - prevEventsRef.current
+      prevEventsRef.current = current
+      const ratePerMin = Math.round(delta * (60_000 / SAMPLE_MS))
+      setEventHistory(h => [...h.slice(-19), ratePerMin])
+    }, SAMPLE_MS)
+    return () => clearInterval(id)
+  }, [])
+
+  const isConnected = connection === 'connected'
 
   return (
-    <main className="page">
-      <header className="topbar">
-        <div>
-          <h1>PQKD Relay Telemetry</h1>
-          <p className="sub">Live grouped state by network_id</p>
+    <div className="app">
+      {/* Topbar */}
+      <div className="topbar">
+        <div className="brand">
+          <div className="brand-mark">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
+              <circle cx="12" cy="12" r="3" />
+              <circle cx="12" cy="12" r="8" strokeDasharray="2 3" />
+              <path d="M12 2v3M12 19v3M2 12h3M19 12h3" strokeLinecap="round" />
+            </svg>
+          </div>
+          <div className="brand-text">
+            <h1>Relay Telemetry</h1>
+            <div className="sub">pqkd-mesh · live · network_id group view</div>
+          </div>
         </div>
-        <div className={`badge ${connection}`}>{connection}</div>
-      </header>
+        <div className="topbar-right">
+          <button
+            className="theme-btn"
+            onClick={() => setDarkMode(d => !d)}
+            title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {darkMode ? (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="5" />
+                <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" strokeLinecap="round" />
+              </svg>
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </button>
+          <div className={`conn-badge ${isConnected ? '' : 'disconnected'}`}>
+            <span className={`dot ${isConnected ? 'online' : 'offline'}`} />
+            <span>{isConnected ? 'WS · LIVE' : `WS · ${connection.toUpperCase()}`}</span>
+          </div>
+        </div>
+      </div>
 
-      <section className="stats">
-        <article className="stat">
-          <span>Networks</span>
-          <strong>{networks.length}</strong>
-        </article>
-        <article className="stat">
-          <span>Relays</span>
-          <strong>{relayCount}</strong>
-        </article>
-        <article className="stat">
-          <span>Last Update</span>
-          <strong>{lastUpdate ? new Date(lastUpdate).toLocaleString() : 'n/a'}</strong>
-        </article>
-      </section>
+      {/* KPI strip */}
+      <div className="kpi-row">
+        <div className="kpi">
+          <div className="kpi-label">Networks</div>
+          <div className="kpi-value">{allNetworks.length}</div>
+          <div className="kpi-sub">{networks.length} visible</div>
+        </div>
+        <div className="kpi">
+          <div className="kpi-label">Nodes</div>
+          <div className="kpi-value">{totals.total}</div>
+          <div className="kpi-sub">
+            <span style={{ color: 'color-mix(in oklch, var(--online) 80%, white)' }}>● {totals.online}</span>
+            <span style={{ color: 'color-mix(in oklch, var(--stale)  80%, white)' }}>● {totals.stale}</span>
+            <span style={{ color: 'color-mix(in oklch, var(--offline) 75%, white)' }}>● {totals.offline}</span>
+          </div>
+        </div>
+        <div className="kpi">
+          <div className="kpi-label">Event Rate</div>
+          <div className="kpi-value" style={{ fontFeatureSettings: "'tnum'" }}>
+            {eventHistory[eventHistory.length - 1]}
+          </div>
+          <div className="kpi-sub">events / min</div>
+          <Sparkline data={eventHistory} color="var(--accent)" />
+        </div>
+        <div className="kpi">
+          <div className="kpi-label">Last Frame</div>
+          <div className="kpi-value mono">
+            {lastUpdate ? new Date(lastUpdate).toLocaleTimeString([], { hour12: false }) : '—'}
+          </div>
+          <div className="kpi-sub">
+            {lastUpdate ? new Date(lastUpdate).toISOString().slice(0, 10) : 'waiting...'}
+          </div>
+        </div>
+      </div>
 
-      <section className="controls">
-        <label className="control">
-          <span>Search chain</span>
+      {/* Toolbar */}
+      <div className="toolbar">
+        <div className="field">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <circle cx="11" cy="11" r="7" /><path d="m20 20-3-3" />
+          </svg>
           <input
             type="text"
-            placeholder="Type network_id..."
+            placeholder="Filter by network_id…"
             value={chainQuery}
-            onChange={(e) => setChainQuery(e.target.value)}
+            onChange={e => setChainQuery(e.target.value)}
           />
-        </label>
-
-        <label className="control">
-          <span>Select chain</span>
-          <select value={selectedChain} onChange={(e) => setSelectedChain(e.target.value)}>
-            <option value="all">All matching chains</option>
-            {matchedChains.map((chainId) => (
-              <option key={chainId} value={chainId}>
-                {chainId}
-              </option>
-            ))}
+        </div>
+        <div className="field select" style={{ maxWidth: 220 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M3 6h18M6 12h12M10 18h4" />
+          </svg>
+          <select value={selectedChain} onChange={e => setSelectedChain(e.target.value)}>
+            <option value="all">All networks</option>
+            {matchedChains.map(id => <option key={id} value={id}>{id}</option>)}
           </select>
-        </label>
-      </section>
+        </div>
+        <div className="seg">
+          <button className={view === 'table' ? 'active' : ''} onClick={() => setView('table')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <path d="M3 10h18M3 15h18M9 4v16" />
+            </svg>
+            Table
+          </button>
+          <button className={view === 'topology' ? 'active' : ''} onClick={() => setView('topology')}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <circle cx="6" cy="6" r="2.5" /><circle cx="18" cy="6" r="2.5" />
+              <circle cx="6" cy="18" r="2.5" /><circle cx="18" cy="18" r="2.5" />
+              <circle cx="12" cy="12" r="2.5" />
+              <path d="m8 7 3 3M16 7l-3 3M8 17l3-3M16 17l-3-3" />
+            </svg>
+            Topology
+          </button>
+        </div>
+      </div>
 
-      <section className="view-switch" aria-label="view selector">
-        <button className={view === 'table' ? 'active' : ''} onClick={() => setView('table')}>
-          Table
-        </button>
-        <button className={view === 'topology' ? 'active' : ''} onClick={() => setView('topology')}>
-          Topology
-        </button>
-      </section>
-
+      {/* Content */}
       {networks.length === 0 ? (
-        <section className="empty">No matching chain data.</section>
+        <div className="net-panel"><div className="empty">No networks match the current filter.</div></div>
       ) : (
-        <section className="networks">
-          {networks.map(([networkId, relays]) => (
-            <article key={networkId} className="network-card">
-              <h2>{networkId}</h2>
-
-              {view === 'table' ? (
-                <div className="table-wrap">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>relay_id</th>
-                        <th>status</th>
-                        <th>pqkds</th>
-                        <th>last_seen_utc</th>
-                        <th>event_count</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {relays.map((relay) => (
-                        <tr key={relay.relay_id}>
-                          <td>{relay.relay_id}</td>
-                          <td>
-                            <span className={`status ${statusClass(relay.status)}`}>{relay.status}</span>
-                          </td>
-                          <td>
-                            {(relay.pqkds || [])
-                              .map((binding) => `${binding.sae_id}->${binding.paired_with}`)
-                              .join(', ')}
-                          </td>
-                          <td>{relay.last_seen_utc}</td>
-                          <td>{relay.event_count}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <TopologyGraph relays={relays} />
-              )}
-            </article>
-          ))}
-        </section>
+        networks.map(([networkId, relays]) => (
+          view === 'table'
+            ? <RelayTable key={networkId} networkId={networkId} relays={relays} />
+            : <TopologyGraph key={networkId} networkId={networkId} relays={relays} connections={connectionsMap.get(networkId) ?? []} />
+        ))
       )}
-    </main>
+    </div>
   )
 }
