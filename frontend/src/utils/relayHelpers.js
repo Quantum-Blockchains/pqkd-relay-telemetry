@@ -38,7 +38,16 @@ function buildOwnerMap(relays) {
   return ownerBySaeId
 }
 
-export function connectedRelayIds(relay, allRelays) {
+export function connectedRelayIds(relay, allRelays, connections) {
+  if (connections?.length) {
+    const seen = new Set()
+    const result = []
+    for (const { first, second } of connections) {
+      const other = first === relay.relay_id ? second : second === relay.relay_id ? first : null
+      if (other && !seen.has(other)) { seen.add(other); result.push(other) }
+    }
+    return result
+  }
   const ownerBySaeId = buildOwnerMap(allRelays)
   const result = new Set()
   for (const b of relay.pqkds || []) {
@@ -218,22 +227,40 @@ export function findTwoDisjointPaths(adj, start, end) {
   return [toOrig(r1), toOrig(r2)]
 }
 
-export function buildRelayEdges(relays) {
+export function buildRelayEdges(relays, connections) {
   const ownerBySaeId = new Map()
   for (const relay of relays) {
     for (const binding of relay.pqkds || []) {
-      if (binding?.sae_id) {
-        ownerBySaeId.set(binding.sae_id, relay.relay_id)
-      }
+      if (binding?.sae_id) ownerBySaeId.set(binding.sae_id, relay.relay_id)
     }
   }
 
   const edgeMap = new Map()
+
+  if (connections?.length) {
+    for (const { first, second } of connections) {
+      const [a, b] = [first, second].sort((x, y) => x.localeCompare(y))
+      const key = `${a}::${b}`
+      if (edgeMap.has(key)) continue
+      const links = []
+      const relayFirst = relays.find(r => r.relay_id === first)
+      if (relayFirst) {
+        for (const binding of relayFirst.pqkds || []) {
+          if (binding?.paired_with && ownerBySaeId.get(binding.paired_with) === second) {
+            links.push(`${binding.sae_id}->${binding.paired_with}`)
+          }
+        }
+      }
+      edgeMap.set(key, { from: a, to: b, links })
+    }
+    return [...edgeMap.values()]
+  }
+
+  // fallback: derive edges from pqkds.paired_with when no connections available
   for (const relay of relays) {
     for (const binding of relay.pqkds || []) {
       const targetRelayId = ownerBySaeId.get(binding?.paired_with)
       if (!targetRelayId || targetRelayId === relay.relay_id) continue
-
       const [a, b] = [relay.relay_id, targetRelayId].sort((x, y) => x.localeCompare(y))
       const key = `${a}::${b}`
       const current = edgeMap.get(key) || { from: a, to: b, links: [] }
@@ -241,6 +268,5 @@ export function buildRelayEdges(relays) {
       edgeMap.set(key, current)
     }
   }
-
   return [...edgeMap.values()]
 }

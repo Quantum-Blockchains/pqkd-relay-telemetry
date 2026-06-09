@@ -56,10 +56,17 @@ impl TelemetryStore {
 
         if let IngestMessage::Register(ref payload) = event {
             if !payload.connections.is_empty() {
-                self.topology
-                    .write()
-                    .await
-                    .insert(payload.network_id.clone(), payload.connections.clone());
+                let mut topo = self.topology.write().await;
+                let existing = topo.entry(payload.network_id.clone()).or_insert_with(Vec::new);
+                for edge in &payload.connections {
+                    let already = existing.iter().any(|e| {
+                        (e.first == edge.first && e.second == edge.second)
+                            || (e.first == edge.second && e.second == edge.first)
+                    });
+                    if !already {
+                        existing.push(edge.clone());
+                    }
+                }
             }
         }
 

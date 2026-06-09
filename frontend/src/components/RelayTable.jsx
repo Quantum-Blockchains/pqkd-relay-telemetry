@@ -47,7 +47,7 @@ function PqkdPanel({ pqkds }) {
   )
 }
 
-export function RelayTable({ networkId, relays }) {
+export function RelayTable({ networkId, relays, connections }) {
   const [expandedId, setExpandedId] = useState(null)
 
   const onlineCount  = relays.filter(r => statusClass(r.status) === 'online').length
@@ -103,7 +103,7 @@ export function RelayTable({ networkId, relays }) {
                     </td>
                     <td><StatusPill status={relay.status} /></td>
                     <td className="cell-conns">
-                      {connectedRelayIds(relay, relays).map(id => (
+                      {connectedRelayIds(relay, relays, connections).map(id => (
                         <span key={id} className="chip">{id}</span>
                       ))}
                     </td>
