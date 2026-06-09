@@ -53,7 +53,7 @@ export function TopologyGraph({ networkId, relays, connections }) {
   const svgH = PAD * 2 + rows * CELL_H
 
   const positions = useMemo(() => gridPositions(relays, cols, rows), [relays, cols, rows])
-  const edges     = useMemo(() => buildRelayEdges(relays), [relays])
+  const edges     = useMemo(() => buildRelayEdges(relays, connections), [relays, connections])
   const adj       = useMemo(() => buildAdjacency(relays, connections), [relays, connections])
 
   const paths = useMemo(() => {

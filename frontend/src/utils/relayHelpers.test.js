@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildAdjacency, findTwoDisjointPaths } from './relayHelpers.js'
+import { buildAdjacency, buildRelayEdges, connectedRelayIds, findTwoDisjointPaths } from './relayHelpers.js'
 
 // Helper: build a relay list from a plain adjacency spec.
 // spec: { relayId: [neighborId, ...] }
@@ -125,4 +125,125 @@ describe('2×5 grid with diagonals', () => {
       expect(isVertexDisjoint(p1, p2)).toBe(true)
     })
   }
+})
+
+// ── buildRelayEdges — connections path ───────────────────────────────────────
+describe('buildRelayEdges — connections path', () => {
+  const relays = [
+    { relay_id: 'r1', pqkds: [{ sae_id: 'sae-1a', paired_with: 'sae-2a' }] },
+    { relay_id: 'r2', pqkds: [{ sae_id: 'sae-2a', paired_with: 'sae-1a' }, { sae_id: 'sae-2b', paired_with: 'sae-3b' }] },
+    { relay_id: 'r3', pqkds: [{ sae_id: 'sae-3b', paired_with: 'sae-2b' }] },
+  ]
+  const edgeKeys = edges => edges.map(e => [e.from, e.to].sort().join('|')).sort()
+
+  it('uses connections when provided — draws exactly connection edges', () => {
+    const connections = [{ first: 'r1', second: 'r2' }, { first: 'r2', second: 'r3' }]
+    expect(edgeKeys(buildRelayEdges(relays, connections))).toEqual(['r1|r2', 'r2|r3'])
+  })
+
+  it('draws a connections-only edge even when pqkds have no such link', () => {
+    const connections = [{ first: 'r1', second: 'r3' }]
+    const edges = buildRelayEdges(relays, connections)
+    expect(edges).toHaveLength(1)
+    expect(edges[0]).toMatchObject({ from: 'r1', to: 'r3' })
+  })
+
+  it('does not draw pqkd edges absent from connections', () => {
+    const connections = [{ first: 'r1', second: 'r2' }]
+    const keys = edgeKeys(buildRelayEdges(relays, connections))
+    expect(keys).toContain('r1|r2')
+    expect(keys).not.toContain('r2|r3')
+  })
+
+  it('falls back to pqkds when connections is empty', () => {
+    expect(edgeKeys(buildRelayEdges(relays, []))).toEqual(['r1|r2', 'r2|r3'])
+  })
+
+  it('deduplicates reversed connections', () => {
+    const connections = [{ first: 'r1', second: 'r2' }, { first: 'r2', second: 'r1' }]
+    expect(buildRelayEdges(relays, connections)).toHaveLength(1)
+  })
+
+  it('populates links from pqkds for the matching connection', () => {
+    const connections = [{ first: 'r1', second: 'r2' }]
+    const [edge] = buildRelayEdges(relays, connections)
+    expect(edge.links).toContain('sae-1a->sae-2a')
+  })
+})
+
+// ── connectedRelayIds — connections path ─────────────────────────────────────
+describe('connectedRelayIds — connections path', () => {
+  const relays = [
+    { relay_id: 'r1', pqkds: [{ sae_id: 'sae-1a', paired_with: 'sae-2a' }] },
+    { relay_id: 'r2', pqkds: [{ sae_id: 'sae-2a', paired_with: 'sae-1a' }] },
+    { relay_id: 'r3', pqkds: [] },
+  ]
+
+  it('returns neighbors from connections (relay in first position)', () => {
+    const connections = [{ first: 'r1', second: 'r2' }, { first: 'r1', second: 'r3' }]
+    const relay = relays.find(r => r.relay_id === 'r1')
+    expect(connectedRelayIds(relay, relays, connections).sort()).toEqual(['r2', 'r3'])
+  })
+
+  it('returns neighbor when relay is in second position', () => {
+    const connections = [{ first: 'r2', second: 'r1' }]
+    const relay = relays.find(r => r.relay_id === 'r1')
+    expect(connectedRelayIds(relay, relays, connections)).toEqual(['r2'])
+  })
+
+  it('falls back to pqkds when connections is empty', () => {
+    const relay = relays.find(r => r.relay_id === 'r1')
+    expect(connectedRelayIds(relay, relays, [])).toEqual(['r2'])
+  })
+
+  it('returns empty array for relay with no matching connections', () => {
+    const connections = [{ first: 'r1', second: 'r2' }]
+    const relay = relays.find(r => r.relay_id === 'r3')
+    expect(connectedRelayIds(relay, relays, connections)).toEqual([])
+  })
+
+  it('deduplicates when relay appears in multiple connections to same neighbor', () => {
+    const connections = [{ first: 'r1', second: 'r2' }, { first: 'r1', second: 'r2' }]
+    const relay = relays.find(r => r.relay_id === 'r1')
+    expect(connectedRelayIds(relay, relays, connections)).toHaveLength(1)
+  })
+})
+
+// ── buildAdjacency — connections path ────────────────────────────────────────
+describe('buildAdjacency — connections path', () => {
+  it('uses connections and ignores pqkds when connections provided', () => {
+    const relays = [
+      { relay_id: 'r1', pqkds: [{ sae_id: 'sae-1a', paired_with: 'sae-2a' }] },
+      { relay_id: 'r2', pqkds: [{ sae_id: 'sae-2a', paired_with: 'sae-1a' }] },
+      { relay_id: 'r3', pqkds: [] },
+    ]
+    const connections = [{ first: 'r1', second: 'r3' }]
+    const adj = buildAdjacency(relays, connections)
+    expect(adj['r1']).toContain('r3')
+    expect(adj['r3']).toContain('r1')
+    expect(adj['r1']).not.toContain('r2')
+    expect(adj['r2']).not.toContain('r1')
+  })
+})
+
+// ── buildRelayEdges / buildAdjacency edge-set agreement ──────────────────────
+describe('buildRelayEdges and buildAdjacency — same connections → same edge set', () => {
+  it('produce identical undirected edge sets from connections', () => {
+    const relays = ['A', 'B', 'C', 'D'].map(id => ({ relay_id: id, pqkds: [] }))
+    const connections = [
+      { first: 'A', second: 'B' },
+      { first: 'B', second: 'C' },
+      { first: 'A', second: 'D' },
+    ]
+    const edges = buildRelayEdges(relays, connections)
+    const adj = buildAdjacency(relays, connections)
+    const edgeSet = new Set(edges.map(e => [e.from, e.to].sort().join('|')))
+
+    for (const [node, neighbors] of Object.entries(adj)) {
+      for (const nb of neighbors) {
+        expect(edgeSet.has([node, nb].sort().join('|'))).toBe(true)
+      }
+    }
+    expect(edgeSet.size).toBe(connections.length)
+  })
 })
