@@ -205,7 +205,7 @@ export default function App() {
       ) : (
         networks.map(([networkId, relays]) => (
           view === 'table'
-            ? <RelayTable key={networkId} networkId={networkId} relays={relays} />
+            ? <RelayTable key={networkId} networkId={networkId} relays={relays} connections={connectionsMap.get(networkId) ?? []} />
             : <TopologyGraph key={networkId} networkId={networkId} relays={relays} connections={connectionsMap.get(networkId) ?? []} />
         ))
       )}
