@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { buildAdjacency, buildRelayEdges, findTwoDisjointPaths, statusClass } from '../utils/relayHelpers'
+import { buildAdjacency, buildRelayEdges, edgeCurveOffset, findTwoDisjointPaths, statusClass } from '../utils/relayHelpers'
 
 const NODE_R  = 22
 const CELL_W  = 200
@@ -211,24 +211,38 @@ export function TopologyGraph({ networkId, relays, connections }) {
               const width  = onPath ? 2.5 : 1.2
               const opacity = faded ? 0.06 : onPath ? 0.95 : 0.18
 
+              // Bend the edge when the straight segment would cross an unrelated node.
+              const obstacles = relays
+                .filter(r => r.relay_id !== edge.from && r.relay_id !== edge.to)
+                .map(r => positions.get(r.relay_id))
+                .filter(Boolean)
+              const off = edgeCurveOffset(from, to, obstacles)
+              let d
+              if (off === 0) {
+                d = `M${from.x},${from.y} L${to.x},${to.y}`
+              } else {
+                const len = Math.hypot(to.x - from.x, to.y - from.y)
+                const cx  = (from.x + to.x) / 2 - ((to.y - from.y) / len) * off
+                const cy  = (from.y + to.y) / 2 + ((to.x - from.x) / len) * off
+                d = `M${from.x},${from.y} Q${cx},${cy} ${to.x},${to.y}`
+              }
+
               return (
                 <g key={`${edge.from}-${edge.to}`}>
                   {onPath && (
-                    <line x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                    <path d={d} fill="none"
                       stroke={color} strokeWidth={8} opacity={0.25}
                       filter="url(#glow-strong)"
                     />
                   )}
-                  <line x1={from.x} y1={from.y} x2={to.x} y2={to.y}
+                  <path d={d} fill="none"
                     stroke={color} strokeWidth={width} opacity={opacity}
                     strokeLinecap="round"
                   />
                   {onPath && (
                     <circle r="3" fill={color}>
                       <animate attributeName="opacity" values="0;1;0" dur="2.2s" repeatCount="indefinite" />
-                      <animateMotion dur="2.2s" repeatCount="indefinite"
-                        path={`M${from.x},${from.y} L${to.x},${to.y}`}
-                      />
+                      <animateMotion dur="2.2s" repeatCount="indefinite" path={d} />
                     </circle>
                   )}
                 </g>
