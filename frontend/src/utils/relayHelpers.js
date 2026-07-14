@@ -227,6 +227,37 @@ export function findTwoDisjointPaths(adj, start, end) {
   return [toOrig(r1), toOrig(r2)]
 }
 
+// Returns 0 when the straight segment from→to stays clear of all obstacles,
+// otherwise a signed perpendicular offset (px) for a quadratic Bézier control
+// point that bends the edge away from the nearest obstructing node.
+// Positive offset bends toward the left normal (-dy, dx) of the segment.
+// Note: a quadratic Bézier deviates from the chord by only half the control
+// offset, so the visible arc apex is magnitude/2 px away from the straight line.
+export function edgeCurveOffset(from, to, obstacles, clearance = 35, magnitude = 70) {
+  const dx = to.x - from.x
+  const dy = to.y - from.y
+  const lenSq = dx * dx + dy * dy
+  if (lenSq === 0) return 0
+
+  let nearestDist = Infinity
+  let nearestCross = 0
+  for (const o of obstacles) {
+    // Project obstacle onto the segment, clamped to its endpoints.
+    const t = Math.max(0, Math.min(1, ((o.x - from.x) * dx + (o.y - from.y) * dy) / lenSq))
+    const px = from.x + t * dx
+    const py = from.y + t * dy
+    const dist = Math.hypot(o.x - px, o.y - py)
+    if (dist < clearance && dist < nearestDist) {
+      nearestDist = dist
+      // Cross product sign tells which side of the segment the obstacle is on.
+      nearestCross = dx * (o.y - from.y) - dy * (o.x - from.x)
+    }
+  }
+  if (nearestDist === Infinity) return 0
+  // Bend away from the obstacle; a node exactly on the line gets a fixed side.
+  return nearestCross > 0 ? -magnitude : magnitude
+}
+
 export function buildRelayEdges(relays, connections) {
   const ownerBySaeId = new Map()
   for (const relay of relays) {

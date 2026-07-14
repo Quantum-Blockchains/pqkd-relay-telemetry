@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { buildAdjacency, buildRelayEdges, connectedRelayIds, findTwoDisjointPaths } from './relayHelpers.js'
+import { buildAdjacency, buildRelayEdges, connectedRelayIds, edgeCurveOffset, findTwoDisjointPaths } from './relayHelpers.js'
 
 // Helper: build a relay list from a plain adjacency spec.
 // spec: { relayId: [neighborId, ...] }
@@ -245,5 +245,39 @@ describe('buildRelayEdges and buildAdjacency — same connections → same edge 
       }
     }
     expect(edgeSet.size).toBe(connections.length)
+  })
+})
+
+// ── edgeCurveOffset ──────────────────────────────────────────────────────────
+describe('edgeCurveOffset', () => {
+  const from = { x: 100, y: 100 }
+  const to   = { x: 500, y: 100 }
+
+  it('returns 0 when no node is near the segment', () => {
+    const obstacles = [{ x: 300, y: 300 }]
+    expect(edgeCurveOffset(from, to, obstacles)).toBe(0)
+  })
+
+  it('returns a non-zero offset for a node exactly on the segment', () => {
+    const obstacles = [{ x: 300, y: 100 }]
+    expect(edgeCurveOffset(from, to, obstacles)).not.toBe(0)
+  })
+
+  it('bends away from an obstructing node slightly off the line', () => {
+    // Node slightly below the segment (y > 100 in SVG coords) → bend up (negative).
+    const below = edgeCurveOffset(from, to, [{ x: 300, y: 110 }])
+    expect(below).toBeLessThan(0)
+    // Node slightly above → bend down (positive).
+    const above = edgeCurveOffset(from, to, [{ x: 300, y: 90 }])
+    expect(above).toBeGreaterThan(0)
+  })
+
+  it('ignores nodes near the segment extension but beyond its endpoints', () => {
+    const obstacles = [{ x: 560, y: 100 }, { x: 40, y: 100 }]
+    expect(edgeCurveOffset(from, to, obstacles)).toBe(0)
+  })
+
+  it('returns 0 for an empty obstacle list', () => {
+    expect(edgeCurveOffset(from, to, [])).toBe(0)
   })
 })
